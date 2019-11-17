@@ -1,0 +1,2 @@
+PyQt5
+pytest>=4.5.0
