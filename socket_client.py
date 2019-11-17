@@ -94,7 +94,7 @@ class IrcClientSocket:
                     continue
                 if re_info == 'user message':
                     user_message = re_message[0]
-                    message = f'[{user_message[0]}]: {user_message[2][:-2]}'
+                    message = f'[{user_message[0]}]: {user_message[2][:-1]}'
                     logging.info(message)
                     yield (message, 'message')
                 elif re_info == 'name list':

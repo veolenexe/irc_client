@@ -1,9 +1,7 @@
 import sys
 from PyQt5.QtWidgets import *
 import winsound
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from threading import Thread
-from PyQt5.QtGui import QPixmap
 from socket_client import IrcClientSocket
 
 SOUNDS = {'click': lambda: winsound.PlaySound('BigButtonClick.wav',
@@ -13,13 +11,11 @@ SOUNDS = {'click': lambda: winsound.PlaySound('BigButtonClick.wav',
 
 
 class UserInterface(QWidget):
-    names = pyqtSignal()
     def __init__(self):
         app = QApplication(sys.argv)
         super().__init__()
         self.setMinimumSize(700, 500)
         self.irc_socket = IrcClientSocket()
-        self.users = ''
         self.grid = QGridLayout()
         self.message_getter = Thread
         self.initUI()
@@ -38,8 +34,10 @@ class UserInterface(QWidget):
         self.username_edit = QLineEdit()
         self.channels_list = QTextBrowser()
         self.chat_window = QTextBrowser()
-        self.users_list = QTextBrowser()
+        self.users_list = QListWidget()
         self.send_message_field = QLineEdit()
+
+
 
         self.grid = QGridLayout()
         self.grid.setSpacing(10)
@@ -72,7 +70,6 @@ class UserInterface(QWidget):
         self.setGeometry(300, 300, 350, 300)
         self.setWindowTitle('VexChat')
         self.show()
-
 
     def connect_to_server(self):
         SOUNDS['click']()
@@ -129,11 +126,12 @@ class UserInterface(QWidget):
                     elif target == 'channels':
                         self.channels_list.append(message)
                     elif target == 'names':
-                        self.users = message
-                        self.refresh_name_list()
+                        self.refresh_name_list(message)
         except StopIteration:
             self.irc_socket.channel_connect = False
             self.chat_window.append('вы были отлючены от сервера')
 
-    def refresh_name_list(self):
-        self.users_list.setText(self.users)
+    def refresh_name_list(self, message):
+        self.users_list.clear()
+        self.users_list.addItem(QListWidgetItem(message))
+    #    self.users_list.setText(self.users)
