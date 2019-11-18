@@ -1,80 +1,100 @@
 import socket
 import re
-import logging
-from chat_log import ChatLog
-
-PORT = 6667
-SUCCESSFUL_CONNECT_MESSAGE = ('вы успешно подключились к серверу', 'message')
-WRONG_NAME_MESSAGE = ('имя уже исполььзуется или имеет не верный формат',
-                      'message')
-
-RE_USER_MSG = re.compile(
-    r':(?P<from>.*?)!\S+\sPRIVMSG\s(?P<to>.*?)\s+:(?!VERSION)(?P<msg>.*)$')
-RE_NAMES = re.compile(r'353.*?[#&][^\x07\x2C\s]{,200} :(.*?)\r\n')
-RE_CHANNEL_LIST = re.compile(r'.*?322.*?(\S*?)(?= \d*? :) (\d*?) :.*?')
-RE_WRONG_NAME_INFO = re.compile(r':.*?43[123].*? :.*?')
-RE_CONNECT_SUCCESSFUL = re.compile(r':.*?001.*? :.*?')
-RE_PING = re.compile(r'^PING.*')
-RE_DICT = {'user message': RE_USER_MSG,
-           'channel list': RE_CHANNEL_LIST,
-           'name list': RE_NAMES,
-           'wrong name message': RE_WRONG_NAME_INFO,
-           'successful connect': RE_CONNECT_SUCCESSFUL,
-           'ping': RE_PING
-           }
-
-logging.basicConfig(handlers=[logging.FileHandler('chat.log', 'a', 'utf-8')],
-                    level=logging.INFO,
-                    format=u'%(message)s')
+from chat_logger import ChatLogger
 
 
 class IrcClientSocket:
+    PORT = 6667
+    SUCCESSFUL_CONNECT_MESSAGE = (
+        'вы успешно подключились к серверу', 'message')
+    WRONG_NAME_MESSAGE = ('имя уже исполььзуется или имеет не верный формат',
+                          'message')
+
+    RE_USER_MSG = re.compile(
+        r':(?P<from>.*?)!\S+\sPRIVMSG\s(?P<to>.*?)\s+:(?!VERSION)(?P<msg>.*)$')
+    RE_NAMES = re.compile(r'353.*?[#&][^\x07\x2C\s]{,200} :(.*?)\r\n')
+    RE_CHANNEL_LIST = re.compile(r'.*?322.*?(\S*?)(?= \d*? :) (\d*?) :.*?')
+    RE_WRONG_NAME_INFO = re.compile(r':.*?43[123].*? :.*?')
+    RE_CONNECT_SUCCESSFUL = re.compile(r':.*?001.*? :.*?')
+    RE_PING = re.compile(r'^PING.*')
+    RE_DICT = {'user message': RE_USER_MSG,
+               'channel list': RE_CHANNEL_LIST,
+               'name list': RE_NAMES,
+               'wrong name message': RE_WRONG_NAME_INFO,
+               'successful connect': RE_CONNECT_SUCCESSFUL,
+               'ping': RE_PING
+               }
+
     def __init__(self):
         self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.channel = ''
         self.server = ''
         self.server_connect = False
         self.channel_connect = False
-        self.chat_log = ChatLog()
+        self.chat_logger = ChatLogger()
 
     def connect_to_server(self, server, user):
+        """
+        подключается к сереру, окрывает лог.
+        :param server: название сервера
+        :param user: имя пользователся
+        """
         try:
             self.irc.close()
             self.server = server
             self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.irc.connect((server, PORT))
-            user_info = f'USER {user} {user} {user} {user}\n'
-            self.irc.send(bytes(user_info, 'UTF-8', errors='replace'))
-            self.irc.send(
-                bytes(f'NICK {user}\n', 'UTF-8', errors='replace'))
+            self.irc.connect((server, IrcClientSocket.PORT))
+            user_info = f'USER {user} {user} {user} {user}'
+            self.__send_message(user_info)
+            self.__send_message(f'NICK {user}')
             self.server_connect = True
-            self.chat_log.open()
+            self.chat_logger.open()
         except (socket.gaierror, TimeoutError, OSError):
             self.close_server()
 
     def connect_to_channel(self, channel):
-        self.channel = channel
-        self.irc.send(
-            bytes(f'JOIN {self.channel}\n', 'UTF-8', errors='replace'))
-        self.channel_connect = True
+        """
+        подключается к каналу, если канала нет, то создает его
+        если название канала не соотв. формату - ничего не делает.
+        :param channel: название канала
+        """
+        if self.server_connect:
+            self.channel = channel
+            self.__send_message(f'JOIN {self.channel}')
+            self.channel_connect = True
 
-    def send_message(self, message):
-        self.irc.send(bytes(f'PRIVMSG {self.channel} : {message}\n',
-                            'UTF-8', 'replace'))
-        self.chat_log.write(message)
-        logging.info(message)
+    def send_private_message(self, message):
+        self.__send_message(f'PRIVMSG {self.channel} : {message}')
+        self.chat_logger.write(message)
 
     def show_channel_list(self):
-        self.irc.send(bytes('LIST\n', 'UTF-8', errors='replace'))
+        self.__send_message('LIST')
 
     def show_name_list(self):
         if self.channel_connect:
-            self.irc.send(
-                bytes(f'NAMES {self.channel}\n', 'UTF-8', errors='replace'))
+            self.__send_message(f'NAMES {self.channel}')
+
+    def __send_message(self, message):
+        """
+        отправляет серверу сообщение
+        :param message: сообщение
+        """
+        self.irc.send(bytes(f'{message}\n', 'UTF-8', errors='replace'))
+
+    def __receive_message(self):
+        message = ''
+        while not message.endswith('\r\n'):
+            message += self.irc.recv(2048).decode("UTF-8", 'replace')
+        return message.strip('nr')
 
     @staticmethod
     def __find_regex(message):
-        for regex_name, pattern in RE_DICT.items():
+        """
+        :param message: сообщения, полученое от сервера
+        :return: tuple(сообщение, тип сообщения)
+        если не совпадает ни с одним типом - возвращает '', ''
+        """
+        for regex_name, pattern in IrcClientSocket.RE_DICT.items():
             result = re.findall(pattern, message)
             if result:
                 return result, regex_name
@@ -86,7 +106,7 @@ class IrcClientSocket:
         self.server_connect = False
         self.channel_connect = False
         self.irc.close()
-        self.chat_log.close()
+        self.chat_logger.close()
 
     def get_message(self):
         """
@@ -95,19 +115,14 @@ class IrcClientSocket:
         """
         try:
             while self.server_connect:
-                message = ''
-                while not message.endswith('\r\n'):
-                    message += self.irc.recv(2048).decode("UTF-8", 'replace')
-                message = message.strip('nr')
+                message = self.__receive_message()
                 re_message, re_info = self.__find_regex(message)
-                print(message)
                 if re_info == '':
                     continue
                 if re_info == 'user message':
                     user_message = re_message[0]
                     message = f'[{user_message[0]}]: {user_message[2][:-1]}'
-                    logging.info(message)
-                    self.chat_log.write(message)
+                    self.chat_logger.write(message)
                     yield (message, 'message')
                 elif re_info == 'name list':
                     message = re.sub(r' ', '\n', re_message[0])
@@ -121,24 +136,10 @@ class IrcClientSocket:
                     self.show_name_list()
                 elif re_info == 'wrong name message':
                     self.close_server()
-                    yield WRONG_NAME_MESSAGE
+                    yield IrcClientSocket.WRONG_NAME_MESSAGE
                 elif re_info == 'successful connect':
-                    yield SUCCESSFUL_CONNECT_MESSAGE
+                    yield IrcClientSocket.SUCCESSFUL_CONNECT_MESSAGE
                 elif re_info == 'ping':
-                    self.irc.send(bytes(f'PONG {self.server}\n', 'UTF-8',
-                                        errors='replace'))
-            self.close_server()
+                    self.__send_message(f'PONG {self.server}')
         except WindowsError:
             self.close_server()
-
-
-def main():
-    ir = IrcClientSocket()
-    ir.connect_to_server('chat.freenode.net', 'default_name')
-    ir.connect_to_channel('#default_channel')
-    while ir.server_connect:
-        print(next(ir.get_message()))
-
-
-if __name__ == '__main__':
-    main()

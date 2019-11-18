@@ -5,13 +5,13 @@ from threading import Thread
 from socket_client import IrcClientSocket
 from symbols_replacer import SymbolsReplacer
 
-SOUNDS = {'click': lambda: winsound.PlaySound('BigButtonClick.wav',
-                                              winsound.SND_ASYNC),
-          'new message': lambda: winsound.PlaySound('QuestNew.wav',
-                                                    winsound.SND_ASYNC)}
 
+class UserInterface(QWidget):  # pragma: no cover
+    SOUNDS = {'click': lambda: winsound.PlaySound('sounds\\BigButtonClick.wav',
+                                                  winsound.SND_ASYNC),
+              'new message': lambda: winsound.PlaySound('sounds\\QuestNew.wav',
+                                                        winsound.SND_ASYNC)}
 
-class UserInterface(QWidget):
     def __init__(self):
         app = QApplication(sys.argv)
         super().__init__()
@@ -77,7 +77,7 @@ class UserInterface(QWidget):
         event.accept()
 
     def connect_to_server(self):
-        SOUNDS['click']()
+        UserInterface.SOUNDS['click']()
         username = self.username_edit.text()
         server = self.server_edit.text()
         self.irc_socket.connect_to_server(server, username)
@@ -90,25 +90,26 @@ class UserInterface(QWidget):
                                     'или недопустимое имя пользователя')
 
     def join_to_channel(self):
-        SOUNDS['click']()
+        UserInterface.SOUNDS['click']()
         if not self.irc_socket.server_connect:
             self.chat_window.append('вы не подключены к cерверу')
         else:
             self.irc_socket.connect_to_channel(self.channel_edit.text())
 
     def send_message(self):
-        SOUNDS['click']()
+        UserInterface.SOUNDS['click']()
         if not self.irc_socket.channel_connect:
             self.chat_window.append('вы не подключены к каналу')
         else:
             message = self.send_message_field.text()
             if message:
-                self.irc_socket.send_message(message)
-                self.chat_window.append(self.symbol_replacer.find_smile(message))
+                self.irc_socket.send_private_message(message)
+                self.chat_window.append(
+                    self.symbol_replacer.find_smile(message))
         self.send_message_field.clear()
 
     def show_channels(self):
-        SOUNDS['click']()
+        UserInterface.SOUNDS['click']()
         self.channels_list.clear()
         if self.irc_socket.server_connect:
             self.irc_socket.show_channel_list()
@@ -126,7 +127,7 @@ class UserInterface(QWidget):
                     target = info[1]
                     message = info[0]
                     if target == 'message':
-                        SOUNDS['new message']()
+                        UserInterface.SOUNDS['new message']()
                         self.chat_window.append(
                             self.symbol_replacer.find_smile(message))
                     elif target == 'channels':
