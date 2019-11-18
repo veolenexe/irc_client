@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import *
 import winsound
 from threading import Thread
 from socket_client import IrcClientSocket
+from symbols_replacer import SymbolsReplacer
 
 SOUNDS = {'click': lambda: winsound.PlaySound('BigButtonClick.wav',
                                               winsound.SND_ASYNC),
@@ -16,6 +17,7 @@ class UserInterface(QWidget):
         super().__init__()
         self.setMinimumSize(700, 500)
         self.irc_socket = IrcClientSocket()
+        self.symbol_replacer = SymbolsReplacer()
         self.grid = QGridLayout()
         self.message_getter = Thread
         self.initUI()
@@ -36,8 +38,6 @@ class UserInterface(QWidget):
         self.chat_window = QTextBrowser()
         self.users_list = QListWidget()
         self.send_message_field = QLineEdit()
-
-
 
         self.grid = QGridLayout()
         self.grid.setSpacing(10)
@@ -71,6 +71,11 @@ class UserInterface(QWidget):
         self.setWindowTitle('VexChat')
         self.show()
 
+    def closeEvent(self, event):
+        if self.irc_socket.server_connect:
+            self.irc_socket.close_server()
+        event.accept()
+
     def connect_to_server(self):
         SOUNDS['click']()
         username = self.username_edit.text()
@@ -99,7 +104,7 @@ class UserInterface(QWidget):
             message = self.send_message_field.text()
             if message:
                 self.irc_socket.send_message(message)
-                self.chat_window.append(message)
+                self.chat_window.append(self.symbol_replacer.find_smile(message))
         self.send_message_field.clear()
 
     def show_channels(self):
@@ -122,7 +127,8 @@ class UserInterface(QWidget):
                     message = info[0]
                     if target == 'message':
                         SOUNDS['new message']()
-                        self.chat_window.append(message)
+                        self.chat_window.append(
+                            self.symbol_replacer.find_smile(message))
                     elif target == 'channels':
                         self.channels_list.append(message)
                     elif target == 'names':
