@@ -133,7 +133,6 @@ class UserInterface(QWidget):  # pragma: no cover
                             self.symbol_replacer.find_smile(message))
                     elif target == 'channels':
                         self.refresh_channel_list(message)
-                        # self.channels_list.append(message)
                     elif target == 'names':
                         self.refresh_name_list(message)
         except StopIteration:
