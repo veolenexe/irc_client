@@ -7,10 +7,15 @@ from symbols_replacer import SymbolsReplacer
 
 
 class UserInterface(QWidget):  # pragma: no cover
-    SOUNDS = {'click': lambda: winsound.PlaySound('sounds\\BigButtonClick.wav',
+    SOUNDS = {'click': lambda: winsound.PlaySound('sounds\\click.wav',
                                                   winsound.SND_ASYNC),
-              'new message': lambda: winsound.PlaySound('sounds\\QuestNew.wav',
-                                                        winsound.SND_ASYNC)}
+              'new message': lambda: winsound.PlaySound(
+                  'sounds\\new_message.wav',
+                  winsound.SND_ASYNC),
+              'join': lambda: winsound.PlaySound('sounds\\join.wav',
+                                                 winsound.SND_ASYNC),
+              'quit': lambda: winsound.PlaySound('sounds\\quit.wav',
+                                                 winsound.SND_ASYNC)}
 
     def __init__(self):
         app = QApplication(sys.argv)
@@ -34,7 +39,7 @@ class UserInterface(QWidget):  # pragma: no cover
         self.server_edit = QLineEdit()
         self.channel_edit = QLineEdit()
         self.username_edit = QLineEdit()
-        self.channels_list = QTextBrowser()
+        self.channels_list = QListWidget()
         self.chat_window = QTextBrowser()
         self.users_list = QListWidget()
         self.send_message_field = QLineEdit()
@@ -56,15 +61,11 @@ class UserInterface(QWidget):  # pragma: no cover
         self.grid.addWidget(send_button, 10, 4)
         self.grid.addWidget(connect_button, 2, 0, 2, 2)
 
-        self.setLayout(self.grid)
-        self.setGeometry(300, 300, 350, 300)
-        self.setWindowTitle('VexChat')
-        self.show()
-
         join_button.clicked.connect(self.join_to_channel)
         connect_button.clicked.connect(self.connect_to_server)
         send_button.clicked.connect(self.send_message)
         show_channels_button.clicked.connect(self.show_channels)
+        self.channels_list.itemDoubleClicked.connect(self.choose_channel)
 
         self.setLayout(self.grid)
         self.setGeometry(300, 300, 350, 300)
@@ -72,7 +73,7 @@ class UserInterface(QWidget):  # pragma: no cover
         self.show()
 
     def closeEvent(self, event):
-        if self.irc_socket.server_connect:
+        if self.irc_socket.is_server_connect():
             self.irc_socket.close_server()
         event.accept()
 
@@ -81,24 +82,24 @@ class UserInterface(QWidget):  # pragma: no cover
         username = self.username_edit.text()
         server = self.server_edit.text()
         self.irc_socket.connect_to_server(server, username)
-        if self.irc_socket.server_connect:
+        if self.irc_socket.is_server_connect():
             self.message_getter = Thread(target=self.get_mesage, daemon=True)
             self.message_getter.start()
-            self.__clear_all_window()
+            self.clear_all_window()
         else:
             self.chat_window.append('вы ввели неверное название сервера '
                                     'или недопустимое имя пользователя')
 
     def join_to_channel(self):
         UserInterface.SOUNDS['click']()
-        if not self.irc_socket.server_connect:
+        if not self.irc_socket.is_server_connect():
             self.chat_window.append('вы не подключены к cерверу')
         else:
             self.irc_socket.connect_to_channel(self.channel_edit.text())
 
     def send_message(self):
         UserInterface.SOUNDS['click']()
-        if not self.irc_socket.channel_connect:
+        if not self.irc_socket.is_server_connect():
             self.chat_window.append('вы не подключены к каналу')
         else:
             message = self.send_message_field.text()
@@ -111,10 +112,10 @@ class UserInterface(QWidget):  # pragma: no cover
     def show_channels(self):
         UserInterface.SOUNDS['click']()
         self.channels_list.clear()
-        if self.irc_socket.server_connect:
+        if self.irc_socket.is_server_connect():
             self.irc_socket.show_channel_list()
 
-    def __clear_all_window(self):
+    def clear_all_window(self):
         self.channels_list.clear()
         self.chat_window.clear()
         self.users_list.clear()
@@ -131,7 +132,8 @@ class UserInterface(QWidget):  # pragma: no cover
                         self.chat_window.append(
                             self.symbol_replacer.find_smile(message))
                     elif target == 'channels':
-                        self.channels_list.append(message)
+                        self.refresh_channel_list(message)
+                        # self.channels_list.append(message)
                     elif target == 'names':
                         self.refresh_name_list(message)
         except StopIteration:
@@ -139,6 +141,25 @@ class UserInterface(QWidget):  # pragma: no cover
             self.chat_window.append('вы были отлючены от сервера')
 
     def refresh_name_list(self, message):
+        """
+        обновляет список пользователей
+        """
+        users = message.split(' ')
+        if len(users) > self.users_list.count():
+            UserInterface.SOUNDS['join']()
+        if len(users) < self.users_list.count():
+            UserInterface.SOUNDS['quit']()
         self.users_list.clear()
-        self.users_list.addItem(QListWidgetItem(message))
-    #    self.users_list.setText(self.users)
+        for user in users:
+            self.users_list.addItem(QListWidgetItem(user))
+
+    def refresh_channel_list(self, channels):
+        for channel in channels.split('\n'):
+            self.channels_list.addItem(QListWidgetItem(channel))
+
+    def choose_channel(self):
+        """
+        вставляет выбраный канал в строку ввода канала
+        """
+        channel = self.channels_list.currentItem().text().split(' ')[0]
+        self.channel_edit.setText(channel)

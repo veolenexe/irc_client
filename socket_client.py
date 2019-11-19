@@ -27,11 +27,11 @@ class IrcClientSocket:
 
     def __init__(self):
         self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.channel = ''
-        self.server = ''
-        self.server_connect = False
-        self.channel_connect = False
-        self.chat_logger = ChatLogger()
+        self.__channel = ''
+        self.__server = ''
+        self.__server_connect = False
+        self.__channel_connect = False
+        self.__chat_logger = ChatLogger()
 
     def connect_to_server(self, server, user):
         """
@@ -41,14 +41,14 @@ class IrcClientSocket:
         """
         try:
             self.irc.close()
-            self.server = server
+            self.__server = server
             self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.irc.connect((server, IrcClientSocket.PORT))
             user_info = f'USER {user} {user} {user} {user}'
             self.__send_message(user_info)
             self.__send_message(f'NICK {user}')
-            self.server_connect = True
-            self.chat_logger.open()
+            self.__server_connect = True
+            self.__chat_logger.open()
         except (socket.gaierror, TimeoutError, OSError):
             self.close_server()
 
@@ -58,21 +58,30 @@ class IrcClientSocket:
         если название канала не соотв. формату - ничего не делает.
         :param channel: название канала
         """
-        if self.server_connect:
-            self.channel = channel
-            self.__send_message(f'JOIN {self.channel}')
-            self.channel_connect = True
+        if self.__server_connect:
+            self.__channel = channel
+            self.__send_message(f'JOIN {self.__channel}')
+            self.__channel_connect = True
 
     def send_private_message(self, message):
-        self.__send_message(f'PRIVMSG {self.channel} : {message}')
-        self.chat_logger.write(message)
+        self.__send_message(f'PRIVMSG {self.__channel} : {message}')
+        self.__chat_logger.write(message)
+
+    def is_server_connect(self):
+        return self.__server_connect
+
+    def get_channel_name(self):
+        return self.__channel
+
+    def is_channel_connect(self):
+        return self.__channel_connect
 
     def show_channel_list(self):
         self.__send_message('LIST')
 
     def show_name_list(self):
-        if self.channel_connect:
-            self.__send_message(f'NAMES {self.channel}')
+        if self.__channel_connect:
+            self.__send_message(f'NAMES {self.__channel}')
 
     def __send_message(self, message):
         """
@@ -103,10 +112,10 @@ class IrcClientSocket:
         return '', ''
 
     def close_server(self):
-        self.server_connect = False
-        self.channel_connect = False
+        self.__server_connect = False
+        self.__channel_connect = False
         self.irc.close()
-        self.chat_logger.close()
+        self.__chat_logger.close()
 
     def get_message(self):
         """
@@ -114,7 +123,7 @@ class IrcClientSocket:
         :return: generator: tuple(message, message_type)
         """
         try:
-            while self.server_connect:
+            while self.__server_connect:
                 message = self.__receive_message()
                 re_message, re_info = self.__find_regex(message)
                 if re_info == '':
@@ -122,17 +131,17 @@ class IrcClientSocket:
                 if re_info == 'user message':
                     user_message = re_message[0]
                     message = f'[{user_message[0]}]: {user_message[2][:-1]}'
-                    self.chat_logger.write(message)
+                    self.__chat_logger.write(message)
                     yield (message, 'message')
                 elif re_info == 'name list':
-                    message = re.sub(r' ', '\n', re_message[0])
+                    message = re_message[0]
                     yield (message, 'names')
                 elif re_info == 'channel list':
                     message = ''
                     for group in re_message:
                         message = f'{message}{group[0]} - {group[1]}\n'
                     yield (message, 'channels')
-                elif re_info == 'refresh names':
+                elif re_info == 'refresh names' and self.__channel_connect:
                     self.show_name_list()
                 elif re_info == 'wrong name message':
                     self.close_server()
@@ -140,6 +149,6 @@ class IrcClientSocket:
                 elif re_info == 'successful connect':
                     yield IrcClientSocket.SUCCESSFUL_CONNECT_MESSAGE
                 elif re_info == 'ping':
-                    self.__send_message(f'PONG {self.server}')
+                    self.__send_message(f'PONG {self.__server}')
         except WindowsError:
             self.close_server()
